@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>YouTube 上傳器（單檔 HTML）</title>
+<style>
+  :root{
+    --bg:#0f1216; --card:#171b21; --card2:#1e242c; --line:#2a323c;
+    --txt:#e8edf3; --dim:#8f9bab; --pri:#3b82f6; --pri2:#2563eb;
+    --ok:#22c55e; --err:#ef4444;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:"Noto Sans TC","PingFang TC","Microsoft JhengHei",-apple-system,sans-serif;font-size:14px}
+  .wrap{max-width:760px;margin:0 auto;padding:28px 20px 80px}
+  h1{font-size:22px;margin:0 0 4px}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:22px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px}
+  .card h2{font-size:14px;margin:0 0 12px;color:var(--dim);font-weight:600;letter-spacing:.04em}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  label{display:block;font-size:12px;color:var(--dim);margin:0 0 6px}
+  input[type=text],textarea,select{width:100%;background:#10151b;border:1px solid var(--line);color:var(--txt);
+    border-radius:9px;padding:10px 12px;font-family:inherit;font-size:14px}
+  textarea{resize:vertical;min-height:70px}
+  input:focus,textarea:focus,select:focus{outline:none;border-color:var(--pri)}
+  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:12px}
+  .btn{background:var(--pri);color:#fff;border:0;border-radius:10px;padding:13px 24px;font-size:15px;
+    font-weight:600;cursor:pointer;font-family:inherit}
+  .btn:hover{background:var(--pri2)}
+  .btn[disabled]{opacity:.5;cursor:not-allowed}
+  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--txt);font-size:13px;padding:9px 16px}
+  .btn.ghost:hover{background:var(--card2)}
+  .drop{border:2px dashed var(--line);border-radius:12px;padding:34px 20px;text-align:center;cursor:pointer;
+    transition:.15s;background:var(--card2)}
+  .drop.hover{border-color:var(--pri);background:#1b2433}
+  .drop b{color:var(--pri)}
+  .drop p{margin:6px 0 0;color:var(--dim);font-size:13px}
+  .bar{height:10px;background:#10151b;border-radius:99px;overflow:hidden;margin:14px 0 8px}
+  .bar > i{display:block;height:100%;width:0;background:linear-gradient(90deg,#3b82f6,#22d3ee);transition:width .25s}
+  .status{display:flex;justify-content:space-between;color:var(--dim);font-size:13px;gap:10px}
+  .tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:99px;background:#24303d;color:#9fb0c3}
+  .tag.ok{background:#12351f;color:#6ee7a0}
+  .tag.err{background:#3a1717;color:#fca5a5}
+  .muted{color:var(--dim);font-size:12px;line-height:1.8}
+  a{color:#7cb3ff}
+  code{background:#10151b;padding:2px 6px;border-radius:4px;font-size:12px;word-break:break-all}
+  .res{margin-top:14px;padding:14px;border-radius:10px;background:#12261a;border:1px solid #1d4d31}
+  .res.bad{background:#2a1414;border-color:#5b2020}
+  .file{display:none;align-items:center;gap:10px;background:var(--card2);border:1px solid var(--line);
+    border-radius:10px;padding:10px 12px;margin-top:12px}
+  .file.on{display:flex}
+  .file .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .file .sz{color:var(--dim);font-size:12px}
+  .chk{display:flex;align-items:center;gap:8px;color:var(--txt);font-size:13px;cursor:pointer;user-select:none}
+  .chk input{width:16px;height:16px;accent-color:var(--pri);cursor:pointer}
+  #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);opacity:0;
+    background:#22303f;color:#fff;padding:10px 16px;border-radius:10px;font-size:13px;transition:.2s;
+    pointer-events:none;max-width:90vw}
+  #toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+  @media(max-width:680px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>⬆️ YouTube 上傳器</h1>
+  <div class="sub">把影片丟進來就自動上傳。標題自動用檔名，隱私記住你上次的選擇，上傳完可以直接丟下一支。</div>
+
+  <div class="card">
+    <h2>① 連接 YouTube 帳號</h2>
+    <div id="authBox"></div>
+    <div class="row" id="cidRow" style="display:none">
+      <div style="flex:1;min-width:260px">
+        <label>Client ID（OAuth 用戶端，類型：網頁應用程式）</label>
+        <input type="text" id="cid" placeholder="xxxxx.apps.googleusercontent.com">
+      </div>
+      <button class="btn" id="saveCid" style="margin-top:16px">儲存</button>
+    </div>
+    <div class="muted" style="margin-top:12px">
+      Cloud Console → 憑證 → 你的 OAuth 用戶端 → 「已授權的 JavaScript 來源」加這一行：<br>
+      <code id="origin"></code>
+      <button class="btn ghost" id="copyOrigin" style="margin-top:8px;padding:5px 10px;font-size:12px">複製</button>
+      <br>只填網域、不要路徑。這版用不到 Client Secret。
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>② 丟影片（丟了就會自動上傳）</h2>
+    <div class="drop" id="drop">
+      <b>點這裡選檔</b> 或把影片拖進來
+      <p>MP4 / MOV / WebM，單檔上限 20 GB · 可一次丟一支，完成後直接丟下一支</p>
+    </div>
+    <input type="file" id="file" accept="video/*" style="display:none">
+    <div class="file" id="fileBox">
+      <span class="tag ok">已選</span>
+      <span class="nm" id="fileName"></span>
+      <span class="sz" id="fileSize"></span>
+      <button class="btn ghost" id="clearFile" style="padding:4px 10px;font-size:12px">移除</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>③ 影片資訊</h2>
+    <label>標題（100 字內）</label>
+    <input type="text" id="title" maxlength="100" placeholder="例：三年級透鏡成像實驗">
+    <div class="grid" style="margin-top:12px">
+      <div>
+        <label>隱私</label>
+        <select id="privacy">
+          <option value="unlisted">不公開（有連結才看得到）</option>
+          <option value="private">私人（只有自己）</option>
+          <option value="public">公開</option>
+        </select>
+      </div>
+      <div>
+        <label>標籤（逗號分隔，可留空）</label>
+        <input type="text" id="tags" placeholder="教學, 實驗">
+      </div>
+    </div>
+    <label style="margin-top:12px">說明（可留空）</label>
+    <textarea id="desc" placeholder="影片說明…"></textarea>
+    <label class="chk" style="margin-top:14px">
+      <input type="checkbox" id="auto" checked> 丟檔就自動上傳（不再跳確認）
+    </label>
+    <div class="row">
+      <button class="btn" id="go" disabled>手動上傳這支</button>
+      <button class="btn ghost" id="cancel" style="display:none">取消</button>
+      <span class="muted" id="hint">先連接帳號並選檔</span>
+    </div>
+    <div class="bar"><i id="bar"></i></div>
+    <div class="status"><span id="pct">0%</span><span id="spd"></span></div>
+    <div id="result"></div>
+  </div>
+
+  <div class="muted">
+    ⚠️ 未通過 Google 驗證的 App，上傳後影片會被鎖成「私人」，要在 YouTube Studio 手動改公開。<br>
+    ⚠️ 每日配額 10,000 單位，一支約 1,600 → 一天最多約 6 支。<br>
+    ⚠️ 純前端授權只有 1 小時，過期按一次「重新連接」就好。
+  </div>
+</div>
+
+<div id="toast"></div>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+const $ = s => document.querySelector(s);
+const SCOPE = 'https://www.googleapis.com/auth/youtube.upload';
+const CHUNK = 8 * 1024 * 1024;
+let token = null, tokenExp = 0, tokenClient = null, file = null, xhr = null, uploading = false, cancelFlag = false;
+
+$('#origin').textContent = location.origin;
+
+/* ---------- 記住的設定 ---------- */
+const autoEl = $('#auto'), privacyEl = $('#privacy'), tagsEl = $('#tags');
+let AUTO = localStorage.getItem('yt_auto') !== '0';
+autoEl.checked = AUTO;
+autoEl.onchange = () => {
+  AUTO = autoEl.checked;
+  localStorage.setItem('yt_auto', AUTO ? '1' : '0');
+  updateGo();
+};
+privacyEl.value = localStorage.getItem('yt_privacy') || 'unlisted';
+tagsEl.value = localStorage.getItem('yt_tags') || '';
+privacyEl.onchange = () => localStorage.setItem('yt_privacy', privacyEl.value);
+tagsEl.onchange = () => localStorage.setItem('yt_tags', tagsEl.value);
+
+/* ---------- Client ID ---------- */
+let cid = localStorage.getItem('yt_cid') || '';
+$('#cid').value = cid;
+$('#saveCid').onclick = () => {
+  const v = $('#cid').value.trim();
+  if (!v) return toast('請填 Client ID');
+  if (!/\.apps\.googleusercontent\.com$/.test(v)) return toast('看起來不像 Client ID（結尾應是 .apps.googleusercontent.com）');
+  cid = v;
+  localStorage.setItem('yt_cid', v);
+  tokenClient = null;
+  renderAuth();
+};
+$('#copyOrigin').onclick = async () => {
+  try { await navigator.clipboard.writeText(location.origin); toast('已複製：' + location.origin); }
+  catch { toast('複製失敗，請手動選取'); }
+};
+
+/* ---------- 授權 ---------- */
+function renderAuth() {
+  const box = $('#authBox');
+  if (token && Date.now() < tokenExp - 60000) {
+    box.innerHTML = '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'
+      + '<span class="tag ok">已連接</span>'
+      + '<span class="muted" style="margin:0">授權剩 ' + Math.max(1, Math.round((tokenExp - Date.now()) / 60000)) + ' 分鐘</span>'
+      + '<button class="btn ghost" id="reconnect" style="padding:6px 12px;font-size:12px">重新連接</button>'
+      + '</div>';
+    $('#reconnect').onclick = requestToken;
+    $('#cidRow').style.display = 'none';
+  } else {
+    box.innerHTML = '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'
+      + '<span class="tag ' + (token ? 'err' : '') + '">' + (token ? '授權已過期' : '未連接') + '</span>'
+      + '<button class="btn" id="connect" style="padding:10px 18px;font-size:14px">連接 Google 帳號</button>'
+      + '</div>';
+    $('#connect').onclick = requestToken;
+    $('#cidRow').style.display = cid ? 'none' : 'flex';
+  }
+  updateGo();
+}
+
+function requestToken() {
+  cid = (localStorage.getItem('yt_cid') || '').trim();
+  if (!cid) { $('#cidRow').style.display = 'flex'; return toast('先填 Client ID'); }
+  if (!window.google || !google.accounts || !google.accounts.oauth2) return toast('Google 登入元件還沒載好，等兩秒再按');
+  if (!tokenClient) {
+    tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: cid,
+      scope: SCOPE,
+      callback: (resp) => {
+        if (resp.error) return toast('授權失敗：' + (resp.error_description || resp.error));
+        token = resp.access_token;
+        tokenExp = Date.now() + (Number(resp.expires_in) || 3600) * 1000;
+        renderAuth();
+        if (AUTO && file && !uploading) startUpload(false);
+      }
+    });
+  }
+  tokenClient.requestAccessToken({ prompt: token ? '' : 'consent' });
+}
+
+/* ---------- 選檔 ---------- */
+const drop = $('#drop'), fi = $('#file');
+drop.onclick = () => fi.click();
+drop.ondragover = e => { e.preventDefault(); drop.classList.add('hover'); };
+drop.ondragleave = () => drop.classList.remove('hover');
+drop.ondrop = e => {
+  e.preventDefault();
+  drop.classList.remove('hover');
+  if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]);
+};
+fi.onchange = () => { if (fi.files[0]) setFile(fi.files[0]); };
+$('#clearFile').onclick = e => {
+  e.stopPropagation();
+  if (uploading) return toast('上傳中不能換檔');
+  file = null; fi.value = '';
+  $('#fileBox').classList.remove('on');
+  updateGo();
+};
+
+function setFile(f) {
+  if (uploading) return toast('上傳中不能換檔');
+  if (!/^video\//.test(f.type) && !/\.(mp4|mov|m4v|webm|mkv|avi)$/i.test(f.name)) return toast('請選影片檔');
+  if (f.size > 20 * 1024 ** 3) return toast('檔案超過 20 GB');
+  file = f;
+  $('#fileName').textContent = f.name;
+  $('#fileSize').textContent = fmtSize(f.size);
+  $('#fileBox').classList.add('on');
+  $('#title').value = f.name.replace(/\.[^.]+$/, '').slice(0, 100);
+  updateGo();
+  if (AUTO) {
+    if (token && Date.now() < tokenExp - 60000) startUpload(false);
+    else { toast('先連接帳號，連好就自動上傳'); requestToken(); }
+  }
+}
+
+function updateGo() {
+  const ok = !!file && !!token && Date.now() < tokenExp - 60000 && !uploading;
+  $('#go').disabled = !ok;
+  $('#hint').textContent = uploading ? '上傳中…'
+    : !token ? '先連接 Google 帳號'
+    : !file ? '把影片丟進來就開始'
+    : AUTO ? '會自動上傳' : '可以按右邊手動上傳';
+}
+
+/* ---------- 上傳 ---------- */
+$('#go').onclick = () => {
+  if (!file || !token) return;
+  const t = $('#title').value.trim() || file.name;
+  if (!confirm('上傳「' + t + '」到 YouTube？\n隱私：' + $('#privacy').selectedOptions[0].text)) return;
+  startUpload(false);
+};
+
+$('#cancel').onclick = () => {
+  cancelFlag = true;
+  if (xhr) xhr.abort();
+};
+
+async function startUpload(ask) {
+  uploading = true; cancelFlag = false;
+  $('#go').disabled = true;
+  $('#cancel').style.display = 'inline-block';
+  $('#result').innerHTML = '';
+  setProgress(0);
+  $('#spd').textContent = '';
+  updateGo();
+
+  const body = {
+    snippet: {
+      title: ($('#title').value.trim() || file.name).slice(0, 100),
+      description: $('#desc').value.slice(0, 4900),
+      tags: $('#tags').value.split(',').map(s => s.trim()).filter(Boolean).slice(0, 30),
+      categoryId: '22'
+    },
+    status: {
+      privacyStatus: $('#privacy').value,
+      selfDeclaredMadeForKids: false
+    }
+  };
+
+  try {
+    const init = await fetch('https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'Content-Type': 'application/json; charset=UTF-8',
+        'X-Upload-Content-Length': String(file.size),
+        'X-Upload-Content-Type': file.type || 'video/mp4'
+      },
+      body: JSON.stringify(body)
+    });
+    if (!init.ok) throw new Error(await describe(init));
+    const loc = init.headers.get('Location') || init.headers.get('location');
+    if (!loc) throw new Error('沒有拿到上傳網址（可能是 CORS 被擋）');
+
+    const total = file.size;
+    let offset = 0, done = null, t0 = Date.now();
+
+    while (offset < total) {
+      if (cancelFlag) throw abortErr();
+      const end = Math.min(offset + CHUNK, total) - 1;
+      const res = await putChunk(loc, file.slice(offset, end + 1), offset, end, total);
+      if (res.status === 308) {
+        const range = res.getResponseHeader('Range');
+        offset = range ? parseInt(range.split('-')[1], 10) + 1 : end + 1;
+        setProgress(Math.round(offset / total * 100));
+        const sec = (Date.now() - t0) / 1000;
+        if (sec > 2) $('#spd').textContent = fmtSize(offset / sec) + '/s';
+      } else if (res.status >= 200 && res.status < 300) {
+        done = JSON.parse(res.responseText || '{}');
+        offset = total;
+        setProgress(100);
+      } else {
+        throw new Error('HTTP ' + res.status + '：' + shortErr(res.responseText));
+      }
+    }
+
+    if (!done || !done.id) throw new Error('上傳結束但沒有拿到影片 ID');
+    showDone(done);
+    resetForNext();
+  } catch (e) {
+    if (cancelFlag || (e && e.name === 'AbortError')) {
+      $('#result').innerHTML = '<div class="res bad">已取消上傳（已上傳的部分 YouTube 會自動丟掉）。</div>';
+    } else {
+      const msg = (e && e.message) || String(e);
+      $('#result').innerHTML = '<div class="res bad">上傳失敗：' + esc(msg) + '</div>';
+      if (/401|invalid_token|unauthor/i.test(msg)) renderAuth();
+    }
+  } finally {
+    uploading = false; xhr = null;
+    $('#cancel').style.display = 'none';
+    updateGo();
+  }
+}
+
+function putChunk(loc, chunk, start, end, total) {
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    xhr = x;
+    x.open('PUT', loc, true);
+    x.setRequestHeader('Content-Type', file.type || 'video/mp4');
+    x.setRequestHeader('Content-Range', 'bytes ' + start + '-' + end + '/' + total);
+    x.upload.onprogress = ev => {
+      if (!ev.lengthComputable) return;
+      setProgress(Math.round((start + ev.loaded) / total * 100));
+    };
+    x.onload = () => resolve(x);
+    x.onerror = () => reject(new Error('網路錯誤（可能是 CORS 被擋或連線中斷）'));
+    x.onabort = () => reject(abortErr());
+    x.send(chunk);
+  });
+}
+
+function resetForNext() {
+  file = null;
+  fi.value = '';
+  $('#fileBox').classList.remove('on');
+  $('#title').value = '';
+  $('#desc').value = '';
+  setTimeout(updateGo, 0);
+}
+
+function abortErr() {
+  const e = new Error('已取消');
+  e.name = 'AbortError';
+  return e;
+}
+
+/* ---------- 小工具 ---------- */
+function setProgress(p) {
+  p = Math.max(0, Math.min(100, p));
+  $('#bar').style.width = p + '%';
+  $('#pct').textContent = p + '%';
+}
+
+function fmtSize(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1024 ** 2) return (n / 1024).toFixed(1) + ' KB';
+  if (n < 1024 ** 3) return (n / 1024 ** 2).toFixed(1) + ' MB';
+  return (n / 1024 ** 3).toFixed(2) + ' GB';
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+function shortErr(text) {
+  try {
+    const j = JSON.parse(text);
+    return (j.error && (j.error.message || j.error.status)) || text.slice(0, 200);
+  } catch { return String(text || '').slice(0, 200); }
+}
+
+async function describe(res) {
+  let t = '';
+  try { t = await res.text(); } catch { }
+  return 'HTTP ' + res.status + '：' + shortErr(t);
+}
+
+function showDone(v) {
+  const url = 'https://youtu.be/' + v.id;
+  $('#result').innerHTML = '<div class="res">✅ 上傳完成！'
+    + '<div style="margin-top:8px"><a href="' + url + '" target="_blank">' + url + '</a></div>'
+    + '<div class="muted" style="margin-top:6px">隱私狀態：' + esc(v.status && v.status.privacyStatus || '') +
+    '　<a href="https://studio.youtube.com/video/' + v.id + '/edit" target="_blank">到 YouTube Studio 修改</a></div></div>';
+}
+
+let toastTimer = null;
+function toast(msg) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('on'), 2600);
+}
+
+renderAuth();
+updateGo();
+</script>
+</body>
+</html>
