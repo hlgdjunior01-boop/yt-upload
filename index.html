@@ -143,9 +143,9 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
 const $ = s => document.querySelector(s);
-const SCOPE = 'https://www.googleapis.com/auth/youtube.upload';
+const SCOPE = 'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly';
 const CHUNK = 8 * 1024 * 1024;
-let token = null, tokenExp = 0, tokenClient = null, file = null, xhr = null, uploading = false, cancelFlag = false;
+let token = null, tokenExp = 0, tokenClient = null, file = null, xhr = null, uploading = false, cancelFlag = false, channel = null;
 
 $('#origin').textContent = location.origin;
 
@@ -184,12 +184,18 @@ $('#copyOrigin').onclick = async () => {
 function renderAuth() {
   const box = $('#authBox');
   if (token && Date.now() < tokenExp - 60000) {
-    box.innerHTML = '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'
+    const chHtml = channel
+      ? '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">'
+        + (channel.thumb ? '<img src="' + channel.thumb + '" style="width:36px;height:36px;border-radius:50%">' : '')
+        + '<div><div style="font-weight:600">' + esc(channel.title) + '</div>'
+        + '<div class="muted" style="margin:0">上傳會進這個頻道</div></div></div>'
+      : '';
+    box.innerHTML = chHtml + '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'
       + '<span class="tag ok">已連接</span>'
       + '<span class="muted" style="margin:0">授權剩 ' + Math.max(1, Math.round((tokenExp - Date.now()) / 60000)) + ' 分鐘</span>'
-      + '<button class="btn ghost" id="reconnect" style="padding:6px 12px;font-size:12px">重新連接</button>'
+      + '<button class="btn ghost" id="switch" style="padding:6px 12px;font-size:12px">切換頻道</button>'
       + '</div>';
-    $('#reconnect').onclick = requestToken;
+    $('#switch').onclick = () => requestToken(true);
     $('#cidRow').style.display = 'none';
   } else {
     box.innerHTML = '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">'
@@ -202,7 +208,7 @@ function renderAuth() {
   updateGo();
 }
 
-function requestToken() {
+function requestToken(force) {
   cid = (localStorage.getItem('yt_cid') || '').trim();
   if (!cid) { $('#cidRow').style.display = 'flex'; return toast('先填 Client ID'); }
   if (!window.google || !google.accounts || !google.accounts.oauth2) return toast('Google 登入元件還沒載好，等兩秒再按');
@@ -214,12 +220,32 @@ function requestToken() {
         if (resp.error) return toast('授權失敗：' + (resp.error_description || resp.error));
         token = resp.access_token;
         tokenExp = Date.now() + (Number(resp.expires_in) || 3600) * 1000;
+        channel = null;
         renderAuth();
+        loadChannel();
         if (AUTO && file && !uploading) startUpload(false);
       }
     });
   }
-  tokenClient.requestAccessToken({ prompt: token ? '' : 'consent' });
+  tokenClient.requestAccessToken({ prompt: force ? 'select_account' : (token ? '' : 'consent') });
+}
+
+async function loadChannel() {
+  try {
+    const r = await fetch('https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!r.ok) return;
+    const j = await r.json();
+    const it = (j.items || [])[0];
+    if (it) {
+      channel = {
+        title: it.snippet.title,
+        thumb: (((it.snippet.thumbnails || {}).default) || {}).url || ''
+      };
+      renderAuth();
+    }
+  } catch (e) { }
 }
 
 /* ---------- 選檔 ---------- */
